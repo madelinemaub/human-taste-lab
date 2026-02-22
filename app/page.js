@@ -886,52 +886,133 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         </div>
       </section>
 
-      {/* Round by Round */}
-      <section className="max-w-3xl mx-auto px-6 mt-24">
-        <div className="flex justify-between items-center mb-10 pb-6 border-b border-gray-100">
-          <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-gray-400">
-            ROUND BY ROUND
-          </h3>
-          <div className="flex gap-10">
-            <div className="flex items-center gap-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <div className="w-4 h-4 rounded-full bg-[#C9A84C]" /> MATCH
-            </div>
-            <div className="flex items-center gap-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <div className="w-4 h-4 rounded-full bg-[#7C6BDB]" /> AI CORRECT
-            </div>
-          </div>
-        </div>
+    WITH visitor_picks AS (
+  SELECT 
+    visitor_id,
+    COUNT(DISTINCT round_id) AS rounds_completed,
+    MAX(CASE WHEN round_id = 'round-1' THEN photo_id END) AS r1_pick,
+    MAX(CASE WHEN round_id = 'round-2' THEN photo_id END) AS r2_pick,
+    MAX(CASE WHEN round_id = 'round-3' THEN photo_id END) AS r3_pick,
+    MAX(CASE WHEN round_id = 'round-1' THEN display_position END) AS r1_display_pos,
+    MAX(CASE WHEN round_id = 'round-2' THEN display_position END) AS r2_display_pos,
+    MAX(CASE WHEN round_id = 'round-3' THEN display_position END) AS r3_display_pos,
+    MIN(created_at) AS first_vote,
+    MAX(created_at) AS last_vote
+  FROM votes
+  GROUP BY visitor_id
+),
 
-        <div className="space-y-2">
-          {ROUNDS_DATA.map((round, idx) => {
-            const votes = voteCounts[round.id] || { a: 0, b: 0, c: 0, d: 0 }
-            const crowdFavId = getCrowdFavorite(votes)
-            const userPickId = selections[round.id]
-            const matchedCrowd = crowdFavId && userPickId && userPickId === crowdFavId
-            const aiWasRight = isAmongLeaders(round.ai_pick, votes)
+round_counts AS (
+  SELECT 
+    round_id, 
+    photo_id, 
+    COUNT(*) AS vote_count,
+    RANK() OVER (PARTITION BY round_id ORDER BY COUNT(*) DESC) AS rnk
+  FROM votes
+  GROUP BY round_id, photo_id
+),
 
-            return (
-              <div key={round.id} className="py-10 flex items-start gap-8 border-b border-gray-50 last:border-0">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold shadow-sm
-                  ${matchedCrowd ? 'bg-black text-white' : 'border-2 border-gray-100 text-gray-300'}
-                `}>
-                  {idx + 1}
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">
-                    ROUND {idx + 1}
-                  </p>
-                  <p className="text-lg md:text-xl font-medium text-gray-800 leading-snug italic">
-                    {getRoundStory(round)}
-                  </p>
-                </div>
-                <div className="flex gap-4 pt-1">
-                  <div className={`w-5 h-5 rounded-full shadow-sm ${matchedCrowd ? 'bg-[#C9A84C]' : 'bg-gray-100'}`} />
-                  <div className={`w-5 h-5 rounded-full shadow-sm ${aiWasRight ? 'bg-[#7C6BDB]' : 'bg-gray-100'}`} />
-                </div>
-              </div>
-            )
-          })}
+crowd_favorites AS (
+  SELECT 
+    round_id,
+    CASE 
+      WHEN COUNT(*) FILTER (WHERE rnk = 1) = 1 
+      THEN MAX(CASE WHEN rnk = 1 THEN photo_id END)
+      ELSE NULL 
+    END AS crowd_fav,
+    STRING_AGG(CASE WHEN rnk = 1 THEN photo_id END, ',' ORDER BY photo_id) AS tied_leaders
+  FROM round_counts
+  GROUP BY round_id
+)
+
+SELECT 
+  vp.visitor_id,
+  vp.rounds_completed,
+  vp.first_vote,
+  vp.last_vote,
+
+  -- Round 1
+  vp.r1_pick,
+  vp.r1_display_pos,
+  cf1.crowd_fav AS r1_crowd_fav,
+  cf1.tied_leaders AS r1_tied_leaders,
+  'a' AS r1_ai_pick,
+  CASE WHEN vp.r1_pick IS NOT NULL AND cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN true ELSE false END AS r1_matched_crowd,
+  CASE WHEN vp.r1_pick = 'a' THEN true ELSE false END AS r1_matched_ai,
+
+  -- Round 2
+  vp.r2_pick,
+  vp.r2_display_pos,
+  cf2.crowd_fav AS r2_crowd_fav,
+  cf2.tied_leaders AS r2_tied_leaders,
+  'a' AS r2_ai_pick,
+  CASE WHEN vp.r2_pick IS NOT NULL AND cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN true ELSE false END AS r2_matched_crowd,
+  CASE WHEN vp.r2_pick = 'a' THEN true ELSE false END AS r2_matched_ai,
+
+  -- Round 3
+  vp.r3_pick,
+  vp.r3_display_pos,
+  cf3.crowd_fav AS r3_crowd_fav,
+  cf3.tied_leaders AS r3_tied_leaders,
+  'c' AS r3_ai_pick,
+  CASE WHEN vp.r3_pick IS NOT NULL AND cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN true ELSE false END AS r3_matched_crowd,
+  CASE WHEN vp.r3_pick = 'c' THEN true ELSE false END AS r3_matched_ai,
+
+  -- Aggregate scores
+  (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+   + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+   + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)
+  ) AS crowd_matches,
+
+  (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
+   + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
+   + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)
+  ) AS ai_matches,
+
+  -- Taste type (only meaningful for complete sessions)
+  CASE
+    WHEN vp.rounds_completed < 3 THEN 'incomplete'
+    
+    WHEN (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
+         + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
+         + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)) = 3
+      AND (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) <= 1
+    THEN 'The Machine Eye'
+
+    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) >= 2
+      AND (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
+         + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
+         + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)) = 0
+    THEN 'The Human Element'
+
+    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 3
+    THEN 'The Perfect Read'
+
+    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 2
+    THEN 'The Mainstream Eye'
+
+    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
+         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 1
+    THEN 'Against the Grain'
+
+    ELSE 'The Outlier'
+  END AS taste_type
+
+FROM visitor_picks vp
+LEFT JOIN crowd_favorites cf1 ON cf1.round_id = 'round-1'
+LEFT JOIN crowd_favorites cf2 ON cf2.round_id = 'round-2'
+LEFT JOIN crowd_favorites cf3 ON cf3.round_id = 'round-3'
+ORDER BY vp.first_vote DESC;
+
         </div>
       </section>
 
