@@ -73,14 +73,24 @@ function seededShuffle(array, seed) {
   return shuffled
 }
 
+// Returns array of photo IDs tied for first place (or single winner)
+function getTiedLeaders(voteCounts) {
+  const entries = Object.entries(voteCounts || {}).filter(([_, v]) => typeof v === 'number' && v > 0)
+  if (entries.length === 0) return []
+  const maxVotes = Math.max(...entries.map(([_, v]) => v))
+  return entries.filter(([_, v]) => v === maxVotes).map(([id]) => id).sort()
+}
+
+// Returns the single crowd favorite, or null if tied
 function getCrowdFavorite(voteCounts) {
-  const entries = Object.entries(voteCounts || {}).filter(([_, v]) => typeof v === 'number')
-  if (entries.length === 0) return null
-  entries.sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1]
-    return a[0].localeCompare(b[0])
-  })
-  return entries[0][0]
+  const leaders = getTiedLeaders(voteCounts)
+  if (leaders.length !== 1) return null
+  return leaders[0]
+}
+
+// Returns true if this photo is among the tied leaders
+function isAmongLeaders(photoId, voteCounts) {
+  return getTiedLeaders(voteCounts).includes(photoId)
 }
 
 function getPercentage(photoId, voteCounts) {
@@ -94,36 +104,91 @@ function getTotalVotes(voteCounts) {
   return Object.values(voteCounts || {}).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0)
 }
 
+function formatPhotoList(letters) {
+  if (letters.length === 1) return `Photo ${letters[0]}`
+  if (letters.length === 2) return `Photos ${letters[0]} and ${letters[1]}`
+  return `Photos ${letters.slice(0, -1).join(', ')}, and ${letters[letters.length - 1]}`
+}
+
 // ————————————————————————————————————————————————————————
-// REPORT CARD LOGIC (5 scenarios per round)
+// REPORT CARD LOGIC
+// Handles both clear-winner and tie scenarios
 // ————————————————————————————————————————————————————————
 
-function getReportCard(userPick, crowdFav, aiPick, userPct, crowdFavPct, crowdFavLetter, aiPickLetter) {
-  const matchedCrowd = userPick === crowdFav
-  const matchedAi = userPick === aiPick
-  const aiCorrect = aiPick === crowdFav
+function getReportCard({
+  userPick, aiPick, crowdFav, tiedLeaders,
+  userPct, crowdFavPct, crowdFavLetter, aiPickLetter,
+  tiedLeaderLetters, tiedPct,
+  userAmongLeaders, aiAmongLeaders
+}) {
+  const isTied = crowdFav === null && tiedLeaders.length > 1
 
-  const personalLine = matchedCrowd
-    ? "You picked the crowd favorite."
-    : `You went a different direction. Only ${userPct}% agreed with you.`
+  // ——— CLEAR WINNER SCENARIOS (existing 5) ———
+  if (!isTied) {
+    const matchedCrowd = userPick === crowdFav
+    const matchedAi = userPick === aiPick
+    const aiCorrect = aiPick === crowdFav
 
-  let aiConnectionLine
-  if (matchedCrowd && matchedAi) {
-    aiConnectionLine = "So did AI. All three converged this round."
-  } else if (matchedCrowd && !matchedAi) {
-    aiConnectionLine = `AI picked something different. It predicted Photo ${aiPickLetter} would be the most popular.`
-  } else if (!matchedCrowd && matchedAi) {
-    aiConnectionLine = "Interestingly, AI picked the same photo you did. But the crowd went elsewhere."
-  } else if (!matchedCrowd && !matchedAi && aiCorrect) {
-    aiConnectionLine = `AI predicted Photo ${crowdFavLetter} would be the most popular.`
-  } else {
-    aiConnectionLine = `AI predicted Photo ${aiPickLetter}. The crowd picked something else entirely.`
+    const personalLine = matchedCrowd
+      ? "You picked the crowd favorite."
+      : `You went a different direction. Only ${userPct}% agreed with you.`
+
+    let aiConnectionLine
+    if (matchedCrowd && matchedAi) {
+      aiConnectionLine = "So did AI. All three converged this round."
+    } else if (matchedCrowd && !matchedAi) {
+      aiConnectionLine = `AI picked something different. It predicted Photo ${aiPickLetter} would be the most popular.`
+    } else if (!matchedCrowd && matchedAi) {
+      aiConnectionLine = "Interestingly, AI picked the same photo you did. But the crowd went elsewhere."
+    } else if (!matchedCrowd && !matchedAi && aiCorrect) {
+      aiConnectionLine = `AI predicted Photo ${crowdFavLetter} would be the most popular.`
+    } else {
+      aiConnectionLine = `AI predicted Photo ${aiPickLetter}. The crowd picked something else entirely.`
+    }
+
+    const verdictLine = `The crowd picked Photo ${crowdFavLetter} with ${crowdFavPct}% of the vote. AI got it ${aiCorrect ? 'right' : 'wrong'}.`
+    const closingLine = aiCorrect
+      ? "This round, AI could predict what humans find beautiful."
+      : "This round, it couldn't."
+
+    return { personalLine, aiConnectionLine, verdictLine, aiCorrect, closingLine, isTied: false }
   }
 
-  const verdictLine = `The crowd picked Photo ${crowdFavLetter} with ${crowdFavPct}% of the vote. AI got it ${aiCorrect ? 'right' : 'wrong'}.`
-  const closingLine = aiCorrect ? "This round, AI could predict what humans find beautiful." : "This round, it couldn't."
+  // ——— TIE SCENARIOS ———
+  const tiedListStr = formatPhotoList(tiedLeaderLetters)
+  const matchedAi = userPick === aiPick
 
-  return { personalLine, aiConnectionLine, verdictLine, aiCorrect, closingLine }
+  let personalLine
+  if (userAmongLeaders) {
+    personalLine = "The crowd was split this round, but your pick was one of the tied leaders."
+  } else {
+    personalLine = `The crowd was split this round. Only ${userPct}% agreed with you.`
+  }
+
+  let aiConnectionLine
+  if (userAmongLeaders && aiAmongLeaders && matchedAi) {
+    aiConnectionLine = "AI picked the same photo you did. You both landed on one of the top choices."
+  } else if (userAmongLeaders && aiAmongLeaders && !matchedAi) {
+    aiConnectionLine = "AI also picked a tied leader, but a different one."
+  } else if (userAmongLeaders && !aiAmongLeaders) {
+    aiConnectionLine = `AI predicted Photo ${aiPickLetter}, which wasn't among the leaders.`
+  } else if (!userAmongLeaders && aiAmongLeaders) {
+    aiConnectionLine = `AI predicted Photo ${aiPickLetter}, one of the tied leaders.`
+  } else {
+    aiConnectionLine = `AI predicted Photo ${aiPickLetter}. It wasn't among the leaders either.`
+  }
+
+  const verdictLine = `${tiedListStr} tied at ${tiedPct}% each. AI ${aiAmongLeaders ? 'picked a tied leader' : 'got it wrong'}.`
+  const closingLine = aiAmongLeaders
+    ? "This round, the crowd was split, but AI was in the mix."
+    : "This round, the crowd was split and AI missed entirely."
+
+  return {
+    personalLine, aiConnectionLine, verdictLine,
+    aiCorrect: aiAmongLeaders,
+    closingLine,
+    isTied: true
+  }
 }
 
 // ————————————————————————————————————————————————————————
@@ -239,7 +304,6 @@ export default function Page() {
     if (!visitorId) return
 
     async function loadData() {
-      // Fetch all votes to compute counts
       const { data: allVotes } = await supabase
         .from('votes')
         .select('round_id, photo_id, visitor_id')
@@ -251,7 +315,6 @@ export default function Page() {
       })
       setVoteCounts(counts)
 
-      // Find this visitor's previous votes
       const myVotes = allVotes?.filter(v => v.visitor_id === visitorId) || []
       if (myVotes.length > 0) {
         const saved = {}
@@ -309,7 +372,6 @@ export default function Page() {
 
   const currentRound = ROUNDS_DATA[currentRoundIdx]
 
-  // Shuffled photos with position-based display letters
   const displayPhotos = useMemo(() => {
     if (!visitorId || !currentRound) return []
     return seededShuffle(currentRound.photos, visitorId + currentRound.id).map((p, i) => ({
@@ -320,6 +382,8 @@ export default function Page() {
 
   const roundVotes = voteCounts[currentRound?.id] || { a: 0, b: 0, c: 0, d: 0 }
   const crowdFavoriteId = useMemo(() => getCrowdFavorite(roundVotes), [roundVotes])
+  const tiedLeaders = useMemo(() => getTiedLeaders(roundVotes), [roundVotes])
+  const isTied = crowdFavoriteId === null && tiedLeaders.length > 1
   const totalVotes = useMemo(() => getTotalVotes(roundVotes), [roundVotes])
 
   // Report card data for the current round
@@ -329,11 +393,44 @@ export default function Page() {
     if (!userPickId) return null
     const aiPickId = currentRound.ai_pick
     const userPct = getPercentage(userPickId, roundVotes)
+    const aiPickLetter = displayPhotos.find(p => p.id === aiPickId)?.displayLetter || '?'
+
+    if (isTied) {
+      const tiedLeaderLetters = tiedLeaders.map(id => displayPhotos.find(p => p.id === id)?.displayLetter || '?').sort()
+      const tiedPct = getPercentage(tiedLeaders[0], roundVotes)
+      return getReportCard({
+        userPick: userPickId,
+        aiPick: aiPickId,
+        crowdFav: null,
+        tiedLeaders,
+        userPct,
+        crowdFavPct: null,
+        crowdFavLetter: null,
+        aiPickLetter,
+        tiedLeaderLetters,
+        tiedPct,
+        userAmongLeaders: isAmongLeaders(userPickId, roundVotes),
+        aiAmongLeaders: isAmongLeaders(aiPickId, roundVotes)
+      })
+    }
+
     const cFavPct = getPercentage(crowdFavoriteId, roundVotes)
     const crowdFavLetter = displayPhotos.find(p => p.id === crowdFavoriteId)?.displayLetter || '?'
-    const aiPickLetter = displayPhotos.find(p => p.id === aiPickId)?.displayLetter || '?'
-    return getReportCard(userPickId, crowdFavoriteId, aiPickId, userPct, cFavPct, crowdFavLetter, aiPickLetter)
-  }, [revealed, currentRound, selections, roundVotes, crowdFavoriteId, displayPhotos])
+    return getReportCard({
+      userPick: userPickId,
+      aiPick: aiPickId,
+      crowdFav: crowdFavoriteId,
+      tiedLeaders,
+      userPct,
+      crowdFavPct: cFavPct,
+      crowdFavLetter,
+      aiPickLetter,
+      tiedLeaderLetters: [],
+      tiedPct: 0,
+      userAmongLeaders: false,
+      aiAmongLeaders: false
+    })
+  }, [revealed, currentRound, selections, roundVotes, crowdFavoriteId, tiedLeaders, isTied, displayPhotos])
 
   // Handle vote confirmation
   const handleConfirm = useCallback(async () => {
@@ -361,6 +458,9 @@ export default function Page() {
   }, [selectedId, revealed, isProcessing, visitorId, currentRound, displayPhotos])
 
   // Stats for results page
+  // crowdMatches: only counts rounds with a clear winner where user matched
+  // aiMatches: user pick === AI pick (independent of crowd)
+  // aiAccuracy: AI is among leaders (works for both clear winner and ties)
   const stats = useMemo(() => {
     let crowdMatches = 0
     let aiMatches = 0
@@ -370,9 +470,12 @@ export default function Page() {
       const rVotes = voteCounts[round.id] || {}
       const cFav = getCrowdFavorite(rVotes)
       const aiP = round.ai_pick
-      if (userPick && userPick === cFav) crowdMatches++
+      // crowdMatches: only if clear winner and user matched
+      if (userPick && cFav && userPick === cFav) crowdMatches++
+      // aiMatches: user and AI agree (independent of crowd)
       if (userPick && userPick === aiP) aiMatches++
-      if (cFav && aiP === cFav) aiAccuracy++
+      // aiAccuracy: AI picked a leader (works for ties too)
+      if (isAmongLeaders(aiP, rVotes)) aiAccuracy++
     })
     return { crowdMatches, aiMatches, aiAccuracy }
   }, [selections, voteCounts])
@@ -458,7 +561,7 @@ export default function Page() {
             const isTapped = selectedId === photo.id
             const isConfirmed = selections[currentRound.id] === photo.id
             const isAiPick = currentRound.ai_pick === photo.id
-            const isWinner = crowdFavoriteId === photo.id
+            const isWinner = !isTied && crowdFavoriteId === photo.id
             const pct = getPercentage(photo.id, roundVotes)
 
             return (
@@ -476,7 +579,7 @@ export default function Page() {
                     src={photo.src}
                     className={`w-full h-full object-cover transition-all duration-700
                       ${revealed ? 'brightness-[0.45] grayscale-[0.2]' : ''}
-                      ${revealed && !isWinner ? 'opacity-60 saturate-[0.4]' : ''}
+                      ${revealed && !isWinner && !isTied ? 'opacity-60 saturate-[0.4]' : ''}
                     `}
                     alt=""
                   />
@@ -590,7 +693,10 @@ export default function Page() {
                       <span className={`px-4 py-1.5 rounded-lg text-[11px] font-black text-white uppercase tracking-wider shadow-sm
                         ${reportCardData?.aiCorrect ? 'bg-green-500' : 'bg-[#FF3B30]'}
                       `}>
-                        {reportCardData?.aiCorrect ? 'Correct' : 'Wrong'}
+                        {reportCardData?.isTied
+                          ? (reportCardData?.aiCorrect ? 'In the mix' : 'Wrong')
+                          : (reportCardData?.aiCorrect ? 'Correct' : 'Wrong')
+                        }
                       </span>
                     </div>
                     <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100">
@@ -653,7 +759,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
   const handleShare = () => {
     const text = `I got "${profile.typeName}" on Human Taste Lab. ${stats.crowdMatches}/3 crowd matches. AI got ${stats.aiAccuracy}/3. What's your taste type? humantastelab.com`
     navigator.clipboard.writeText(text).catch(() => {
-      // Fallback for older browsers
       const el = document.createElement('textarea')
       el.value = text
       document.body.appendChild(el)
@@ -669,9 +774,8 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
     const userPickId = selections[round.id]
     const votes = voteCounts[round.id] || { a: 0, b: 0, c: 0, d: 0 }
     const crowdFavId = getCrowdFavorite(votes)
-    const matchedCrowd = userPickId === crowdFavId
-    const aiCorrect = round.ai_pick === crowdFavId
-    const matchedAi = userPickId === round.ai_pick
+    const leaders = getTiedLeaders(votes)
+    const roundIsTied = crowdFavId === null && leaders.length > 1
 
     // Get display letters for this round's shuffle
     const shuffled = seededShuffle(round.photos, visitorId + round.id).map((p, i) => ({
@@ -679,9 +783,27 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
       displayLetter: ['A', 'B', 'C', 'D'][i]
     }))
     const uLetter = shuffled.find(p => p.id === userPickId)?.displayLetter || '?'
-    const cLetter = shuffled.find(p => p.id === crowdFavId)?.displayLetter || '?'
     const aLetter = shuffled.find(p => p.id === round.ai_pick)?.displayLetter || '?'
+
+    if (roundIsTied) {
+      const leaderLetters = leaders.map(id => shuffled.find(p => p.id === id)?.displayLetter || '?').sort()
+      const tiedStr = formatPhotoList(leaderLetters)
+      const tiedPct = getPercentage(leaders[0], votes)
+      const userInMix = isAmongLeaders(userPickId, votes)
+      const aiInMix = isAmongLeaders(round.ai_pick, votes)
+
+      if (userInMix && aiInMix) return `${tiedStr} tied at ${tiedPct}%. You and AI both picked tied leaders.`
+      if (userInMix && !aiInMix) return `${tiedStr} tied at ${tiedPct}%. Your pick was a tied leader. AI picked Photo ${aLetter} instead.`
+      if (!userInMix && aiInMix) return `${tiedStr} tied at ${tiedPct}%. You picked Photo ${uLetter}. AI picked a tied leader.`
+      return `${tiedStr} tied at ${tiedPct}%. You picked Photo ${uLetter}. AI picked Photo ${aLetter}. Nobody picked a leader.`
+    }
+
+    // Clear winner scenarios
+    const cLetter = shuffled.find(p => p.id === crowdFavId)?.displayLetter || '?'
     const crowdPct = getPercentage(crowdFavId, votes)
+    const matchedCrowd = userPickId === crowdFavId
+    const aiCorrect = round.ai_pick === crowdFavId
+    const matchedAi = userPickId === round.ai_pick
 
     if (matchedCrowd && aiCorrect) return `You picked Photo ${uLetter}, the crowd favorite. AI called it too.`
     if (matchedCrowd && !aiCorrect) return `You picked Photo ${uLetter}, the crowd favorite. AI picked Photo ${aLetter} instead.`
@@ -785,8 +907,8 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
             const votes = voteCounts[round.id] || { a: 0, b: 0, c: 0, d: 0 }
             const crowdFavId = getCrowdFavorite(votes)
             const userPickId = selections[round.id]
-            const matchedCrowd = userPickId && userPickId === crowdFavId
-            const aiWasRight = round.ai_pick === crowdFavId
+            const matchedCrowd = crowdFavId && userPickId && userPickId === crowdFavId
+            const aiWasRight = isAmongLeaders(round.ai_pick, votes)
 
             return (
               <div key={round.id} className="py-10 flex items-start gap-8 border-b border-gray-50 last:border-0">
