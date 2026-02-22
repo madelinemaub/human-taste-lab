@@ -73,7 +73,6 @@ function seededShuffle(array, seed) {
   return shuffled
 }
 
-// Returns array of photo IDs tied for first place (or single winner)
 function getTiedLeaders(voteCounts) {
   const entries = Object.entries(voteCounts || {}).filter(([_, v]) => typeof v === 'number' && v > 0)
   if (entries.length === 0) return []
@@ -81,14 +80,12 @@ function getTiedLeaders(voteCounts) {
   return entries.filter(([_, v]) => v === maxVotes).map(([id]) => id).sort()
 }
 
-// Returns the single crowd favorite, or null if tied
 function getCrowdFavorite(voteCounts) {
   const leaders = getTiedLeaders(voteCounts)
   if (leaders.length !== 1) return null
   return leaders[0]
 }
 
-// Returns true if this photo is among the tied leaders
 function isAmongLeaders(photoId, voteCounts) {
   return getTiedLeaders(voteCounts).includes(photoId)
 }
@@ -112,7 +109,6 @@ function formatPhotoList(letters) {
 
 // ————————————————————————————————————————————————————————
 // REPORT CARD LOGIC
-// Handles both clear-winner and tie scenarios
 // ————————————————————————————————————————————————————————
 
 function getReportCard({
@@ -123,7 +119,6 @@ function getReportCard({
 }) {
   const isTied = crowdFav === null && tiedLeaders.length > 1
 
-  // ——— CLEAR WINNER SCENARIOS (existing 5) ———
   if (!isTied) {
     const matchedCrowd = userPick === crowdFav
     const matchedAi = userPick === aiPick
@@ -154,7 +149,6 @@ function getReportCard({
     return { personalLine, aiConnectionLine, verdictLine, aiCorrect, closingLine, isTied: false }
   }
 
-  // ——— TIE SCENARIOS ———
   const tiedListStr = formatPhotoList(tiedLeaderLetters)
   const matchedAi = userPick === aiPick
 
@@ -289,7 +283,6 @@ export default function Page() {
   const [sessionComplete, setSessionComplete] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Initialize visitor ID
   useEffect(() => {
     let id = localStorage.getItem('htl_visitor_id')
     if (!id) {
@@ -299,42 +292,34 @@ export default function Page() {
     setVisitorId(id)
   }, [])
 
-  // Load all votes and this visitor's previous selections
   useEffect(() => {
     if (!visitorId) return
-
     async function loadData() {
       const { data: allVotes } = await supabase
         .from('votes')
         .select('round_id, photo_id, visitor_id')
-
       const counts = {}
       allVotes?.forEach(vote => {
         if (!counts[vote.round_id]) counts[vote.round_id] = { a: 0, b: 0, c: 0, d: 0 }
         counts[vote.round_id][vote.photo_id] = (counts[vote.round_id][vote.photo_id] || 0) + 1
       })
       setVoteCounts(counts)
-
       const myVotes = allVotes?.filter(v => v.visitor_id === visitorId) || []
       if (myVotes.length > 0) {
         const saved = {}
         myVotes.forEach(v => { saved[v.round_id] = v.photo_id })
         setSelections(saved)
-
         if (myVotes.length >= 3) {
           setSessionComplete(true)
         } else {
           setCurrentRoundIdx(myVotes.length)
         }
       }
-
       setLoading(false)
     }
-
     loadData()
   }, [visitorId])
 
-  // Real-time subscription for new votes
   useEffect(() => {
     const channel = supabase
       .channel('votes-realtime')
@@ -354,11 +339,9 @@ export default function Page() {
         }
       )
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  // Processing animation
   useEffect(() => {
     if (isProcessing) {
       const t1 = setTimeout(() => setProcessingStep(1), 1000)
@@ -386,7 +369,6 @@ export default function Page() {
   const isTied = crowdFavoriteId === null && tiedLeaders.length > 1
   const totalVotes = useMemo(() => getTotalVotes(roundVotes), [roundVotes])
 
-  // Report card data for the current round
   const reportCardData = useMemo(() => {
     if (!revealed || !currentRound) return null
     const userPickId = selections[currentRound.id]
@@ -399,16 +381,9 @@ export default function Page() {
       const tiedLeaderLetters = tiedLeaders.map(id => displayPhotos.find(p => p.id === id)?.displayLetter || '?').sort()
       const tiedPct = getPercentage(tiedLeaders[0], roundVotes)
       return getReportCard({
-        userPick: userPickId,
-        aiPick: aiPickId,
-        crowdFav: null,
-        tiedLeaders,
-        userPct,
-        crowdFavPct: null,
-        crowdFavLetter: null,
-        aiPickLetter,
-        tiedLeaderLetters,
-        tiedPct,
+        userPick: userPickId, aiPick: aiPickId, crowdFav: null, tiedLeaders,
+        userPct, crowdFavPct: null, crowdFavLetter: null, aiPickLetter,
+        tiedLeaderLetters, tiedPct,
         userAmongLeaders: isAmongLeaders(userPickId, roundVotes),
         aiAmongLeaders: isAmongLeaders(aiPickId, roundVotes)
       })
@@ -417,29 +392,18 @@ export default function Page() {
     const cFavPct = getPercentage(crowdFavoriteId, roundVotes)
     const crowdFavLetter = displayPhotos.find(p => p.id === crowdFavoriteId)?.displayLetter || '?'
     return getReportCard({
-      userPick: userPickId,
-      aiPick: aiPickId,
-      crowdFav: crowdFavoriteId,
-      tiedLeaders,
-      userPct,
-      crowdFavPct: cFavPct,
-      crowdFavLetter,
-      aiPickLetter,
-      tiedLeaderLetters: [],
-      tiedPct: 0,
-      userAmongLeaders: false,
-      aiAmongLeaders: false
+      userPick: userPickId, aiPick: aiPickId, crowdFav: crowdFavoriteId, tiedLeaders,
+      userPct, crowdFavPct: cFavPct, crowdFavLetter, aiPickLetter,
+      tiedLeaderLetters: [], tiedPct: 0,
+      userAmongLeaders: false, aiAmongLeaders: false
     })
   }, [revealed, currentRound, selections, roundVotes, crowdFavoriteId, tiedLeaders, isTied, displayPhotos])
 
-  // Handle vote confirmation
   const handleConfirm = useCallback(async () => {
     if (!selectedId || revealed || isProcessing || !visitorId) return
-
     setSelections(prev => ({ ...prev, [currentRound.id]: selectedId }))
     setIsProcessing(true)
     setProcessingStep(0)
-
     try {
       const position = displayPhotos.findIndex(p => p.id === selectedId)
       const { error } = await supabase.from('votes').insert({
@@ -448,7 +412,6 @@ export default function Page() {
         photo_id: selectedId,
         display_position: position
       })
-
       if (error && error.code !== '23505') {
         console.error('Vote error:', error)
       }
@@ -457,10 +420,6 @@ export default function Page() {
     }
   }, [selectedId, revealed, isProcessing, visitorId, currentRound, displayPhotos])
 
-  // Stats for results page
-  // crowdMatches: only counts rounds with a clear winner where user matched
-  // aiMatches: user pick === AI pick (independent of crowd)
-  // aiAccuracy: AI is among leaders (works for both clear winner and ties)
   const stats = useMemo(() => {
     let crowdMatches = 0
     let aiMatches = 0
@@ -470,11 +429,8 @@ export default function Page() {
       const rVotes = voteCounts[round.id] || {}
       const cFav = getCrowdFavorite(rVotes)
       const aiP = round.ai_pick
-      // crowdMatches: only if clear winner and user matched
       if (userPick && cFav && userPick === cFav) crowdMatches++
-      // aiMatches: user and AI agree (independent of crowd)
       if (userPick && userPick === aiP) aiMatches++
-      // aiAccuracy: AI picked a leader (works for ties too)
       if (isAmongLeaders(aiP, rVotes)) aiAccuracy++
     })
     return { crowdMatches, aiMatches, aiAccuracy }
@@ -482,7 +438,6 @@ export default function Page() {
 
   const typeKey = useMemo(() => getTasteType(stats.crowdMatches, stats.aiMatches), [stats])
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FDFDFD] flex items-center justify-center">
@@ -498,7 +453,6 @@ export default function Page() {
     )
   }
 
-  // Results page
   if (sessionComplete) {
     return (
       <SummaryView
@@ -518,11 +472,8 @@ export default function Page() {
     )
   }
 
-  // ——— VOTING UI ———
-
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1A1A1A] font-sans overflow-x-hidden selection:bg-black selection:text-white">
-      {/* Header */}
       <header className="max-w-7xl mx-auto px-6 md:px-8 pt-8 md:pt-12 pb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
@@ -554,7 +505,6 @@ export default function Page() {
         </div>
       </header>
 
-      {/* Photo Grid */}
       <main className="max-w-7xl mx-auto px-6 md:px-8 pb-32">
         <div className="grid grid-cols-4 gap-2 md:gap-6 mb-8 mt-12 md:mt-24">
           {displayPhotos.map((photo) => {
@@ -583,7 +533,6 @@ export default function Page() {
                     `}
                     alt=""
                   />
-
                   {revealed && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-2">
                       <div className="absolute top-1 right-1 md:top-4 md:right-4 flex flex-col gap-1 items-end">
@@ -598,11 +547,9 @@ export default function Page() {
                           </span>
                         )}
                       </div>
-
                       <span className="text-[20px] md:text-[64px] font-black leading-none">
                         {pct}%
                       </span>
-
                       {isConfirmed && (
                         <div className="absolute bottom-4 md:bottom-12 bg-white text-black px-3 md:px-6 py-1 md:py-2.5 rounded-full flex items-center gap-1.5 md:gap-2 text-[6px] md:text-[11px] font-black uppercase tracking-wider shadow-xl z-10 border border-black/5">
                           <Check className="w-3 h-3 md:w-4 md:h-4 stroke-[3px]" /> YOUR PICK
@@ -611,8 +558,6 @@ export default function Page() {
                     </div>
                   )}
                 </button>
-
-                {/* Photo label and progress bar */}
                 <div className="mt-4 md:mt-6 flex justify-between items-center px-1">
                   <span className={`text-[10px] md:text-[12px] font-black uppercase tracking-[0.1em] transition-colors
                     ${isTapped && !revealed ? 'text-black' : 'text-gray-400'}
@@ -636,7 +581,6 @@ export default function Page() {
           })}
         </div>
 
-        {/* Action Area */}
         <div className="mt-12 md:mt-20 max-w-4xl mx-auto flex flex-col items-center min-h-[160px]">
           {!revealed && !isProcessing ? (
             <div className="w-full flex flex-col items-center gap-6">
@@ -675,7 +619,6 @@ export default function Page() {
               </p>
             </div>
           ) : (
-            /* Report Card */
             <div className="w-full">
               <div className="bg-white border border-gray-200 rounded-[32px] p-8 md:p-14 text-left shadow-sm mb-12 relative overflow-hidden">
                 <div className="w-full space-y-10">
@@ -708,7 +651,6 @@ export default function Page() {
                       </p>
                     </div>
                   </div>
-
                   <div className="pt-10 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-10">
                     <div className="flex items-center gap-3">
                       <div className={`w-2 h-2 rounded-full ${reportCardData?.aiCorrect ? 'bg-green-500' : 'bg-[#FF3B30]'}`} />
@@ -777,7 +719,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
     const leaders = getTiedLeaders(votes)
     const roundIsTied = crowdFavId === null && leaders.length > 1
 
-    // Get display letters for this round's shuffle
     const shuffled = seededShuffle(round.photos, visitorId + round.id).map((p, i) => ({
       ...p,
       displayLetter: ['A', 'B', 'C', 'D'][i]
@@ -798,7 +739,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
       return `${tiedStr} tied at ${tiedPct}%. You picked Photo ${uLetter}. AI picked Photo ${aLetter}. Nobody picked a leader.`
     }
 
-    // Clear winner scenarios
     const cLetter = shuffled.find(p => p.id === crowdFavId)?.displayLetter || '?'
     const crowdPct = getPercentage(crowdFavId, votes)
     const matchedCrowd = userPickId === crowdFavId
@@ -814,7 +754,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-[#1A1A1A] font-sans pb-32">
-      {/* Header */}
       <header className="max-w-3xl mx-auto px-6 pt-12 flex justify-between items-center mb-16">
         <div className="flex items-center gap-3">
           <LogoSection size="w-10 h-10" />
@@ -823,7 +762,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">3 ROUNDS COMPLETE</span>
       </header>
 
-      {/* Hero Card */}
       <section className={`max-w-4xl mx-auto mx-6 rounded-[40px] p-12 md:p-20 bg-gradient-to-br ${profile.bg} text-white relative overflow-hidden shadow-2xl`}>
         <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: profile.accent }} />
         <div className="relative z-10 space-y-6">
@@ -839,7 +777,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         </div>
       </section>
 
-      {/* Score Cards */}
       <section className="max-w-3xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 -mt-12 px-6 relative z-20">
         <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center shadow-xl space-y-2">
           <div className="text-5xl font-serif" style={{ color: '#C9A84C' }}>
@@ -867,7 +804,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         </div>
       </section>
 
-      {/* Detail */}
       <section className="max-w-3xl mx-auto px-6 mt-16">
         <div className="bg-white border border-gray-100 rounded-3xl p-10 md:p-12 shadow-sm">
           <p className="text-lg md:text-xl text-gray-500 leading-relaxed font-medium">
@@ -876,7 +812,6 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         </div>
       </section>
 
-      {/* AI Scorecard */}
       <section className="max-w-3xl mx-auto px-6 mt-8">
         <div className="rounded-2xl p-8 flex items-center gap-6 border border-black/5 shadow-sm" style={{ backgroundColor: aiScorecardData.bg }}>
           <div className="w-4 h-4 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: aiScorecardData.dot }} />
@@ -886,137 +821,60 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
         </div>
       </section>
 
-    WITH visitor_picks AS (
-  SELECT 
-    visitor_id,
-    COUNT(DISTINCT round_id) AS rounds_completed,
-    MAX(CASE WHEN round_id = 'round-1' THEN photo_id END) AS r1_pick,
-    MAX(CASE WHEN round_id = 'round-2' THEN photo_id END) AS r2_pick,
-    MAX(CASE WHEN round_id = 'round-3' THEN photo_id END) AS r3_pick,
-    MAX(CASE WHEN round_id = 'round-1' THEN display_position END) AS r1_display_pos,
-    MAX(CASE WHEN round_id = 'round-2' THEN display_position END) AS r2_display_pos,
-    MAX(CASE WHEN round_id = 'round-3' THEN display_position END) AS r3_display_pos,
-    MIN(created_at) AS first_vote,
-    MAX(created_at) AS last_vote
-  FROM votes
-  GROUP BY visitor_id
-),
+      {/* Round by Round */}
+      <section className="max-w-3xl mx-auto px-6 mt-24">
+        <div className="flex justify-between items-center mb-10 pb-6 border-b border-gray-100">
+          <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-gray-400">
+            ROUND BY ROUND
+          </h3>
+          <div className="flex gap-6 md:gap-10">
+            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#C9A84C]" /> CROWD
+            </div>
+            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#7C6BDB]" /> AI
+            </div>
+            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#1C1C28]" /> AGREED
+            </div>
+          </div>
+        </div>
 
-round_counts AS (
-  SELECT 
-    round_id, 
-    photo_id, 
-    COUNT(*) AS vote_count,
-    RANK() OVER (PARTITION BY round_id ORDER BY COUNT(*) DESC) AS rnk
-  FROM votes
-  GROUP BY round_id, photo_id
-),
+        <div className="space-y-2">
+          {ROUNDS_DATA.map((round, idx) => {
+            const votes = voteCounts[round.id] || { a: 0, b: 0, c: 0, d: 0 }
+            const crowdFavId = getCrowdFavorite(votes)
+            const userPickId = selections[round.id]
+            const matchedCrowd = crowdFavId && userPickId && userPickId === crowdFavId
+            const aiWasRight = isAmongLeaders(round.ai_pick, votes)
+            const userAndAiAgreed = userPickId && userPickId === round.ai_pick
 
-crowd_favorites AS (
-  SELECT 
-    round_id,
-    CASE 
-      WHEN COUNT(*) FILTER (WHERE rnk = 1) = 1 
-      THEN MAX(CASE WHEN rnk = 1 THEN photo_id END)
-      ELSE NULL 
-    END AS crowd_fav,
-    STRING_AGG(CASE WHEN rnk = 1 THEN photo_id END, ',' ORDER BY photo_id) AS tied_leaders
-  FROM round_counts
-  GROUP BY round_id
-)
-
-SELECT 
-  vp.visitor_id,
-  vp.rounds_completed,
-  vp.first_vote,
-  vp.last_vote,
-
-  -- Round 1
-  vp.r1_pick,
-  vp.r1_display_pos,
-  cf1.crowd_fav AS r1_crowd_fav,
-  cf1.tied_leaders AS r1_tied_leaders,
-  'a' AS r1_ai_pick,
-  CASE WHEN vp.r1_pick IS NOT NULL AND cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN true ELSE false END AS r1_matched_crowd,
-  CASE WHEN vp.r1_pick = 'a' THEN true ELSE false END AS r1_matched_ai,
-
-  -- Round 2
-  vp.r2_pick,
-  vp.r2_display_pos,
-  cf2.crowd_fav AS r2_crowd_fav,
-  cf2.tied_leaders AS r2_tied_leaders,
-  'a' AS r2_ai_pick,
-  CASE WHEN vp.r2_pick IS NOT NULL AND cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN true ELSE false END AS r2_matched_crowd,
-  CASE WHEN vp.r2_pick = 'a' THEN true ELSE false END AS r2_matched_ai,
-
-  -- Round 3
-  vp.r3_pick,
-  vp.r3_display_pos,
-  cf3.crowd_fav AS r3_crowd_fav,
-  cf3.tied_leaders AS r3_tied_leaders,
-  'c' AS r3_ai_pick,
-  CASE WHEN vp.r3_pick IS NOT NULL AND cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN true ELSE false END AS r3_matched_crowd,
-  CASE WHEN vp.r3_pick = 'c' THEN true ELSE false END AS r3_matched_ai,
-
-  -- Aggregate scores
-  (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-   + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-   + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)
-  ) AS crowd_matches,
-
-  (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
-   + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
-   + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)
-  ) AS ai_matches,
-
-  -- Taste type (only meaningful for complete sessions)
-  CASE
-    WHEN vp.rounds_completed < 3 THEN 'incomplete'
-    
-    WHEN (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
-         + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
-         + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)) = 3
-      AND (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) <= 1
-    THEN 'The Machine Eye'
-
-    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) >= 2
-      AND (COALESCE(CASE WHEN vp.r1_pick = 'a' THEN 1 END, 0)
-         + COALESCE(CASE WHEN vp.r2_pick = 'a' THEN 1 END, 0)
-         + COALESCE(CASE WHEN vp.r3_pick = 'c' THEN 1 END, 0)) = 0
-    THEN 'The Human Element'
-
-    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 3
-    THEN 'The Perfect Read'
-
-    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 2
-    THEN 'The Mainstream Eye'
-
-    WHEN (COALESCE(CASE WHEN cf1.crowd_fav IS NOT NULL AND vp.r1_pick = cf1.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf2.crowd_fav IS NOT NULL AND vp.r2_pick = cf2.crowd_fav THEN 1 END, 0)
-         + COALESCE(CASE WHEN cf3.crowd_fav IS NOT NULL AND vp.r3_pick = cf3.crowd_fav THEN 1 END, 0)) = 1
-    THEN 'Against the Grain'
-
-    ELSE 'The Outlier'
-  END AS taste_type
-
-FROM visitor_picks vp
-LEFT JOIN crowd_favorites cf1 ON cf1.round_id = 'round-1'
-LEFT JOIN crowd_favorites cf2 ON cf2.round_id = 'round-2'
-LEFT JOIN crowd_favorites cf3 ON cf3.round_id = 'round-3'
-ORDER BY vp.first_vote DESC;
-
+            return (
+              <div key={round.id} className="py-10 flex items-start gap-8 border-b border-gray-50 last:border-0">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold shadow-sm
+                  ${matchedCrowd ? 'bg-black text-white' : 'border-2 border-gray-100 text-gray-300'}
+                `}>
+                  {idx + 1}
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">
+                    ROUND {idx + 1}
+                  </p>
+                  <p className="text-lg md:text-xl font-medium text-gray-800 leading-snug italic">
+                    {getRoundStory(round)}
+                  </p>
+                </div>
+                <div className="flex gap-4 pt-1">
+                  <div className={`w-5 h-5 rounded-full shadow-sm ${matchedCrowd ? 'bg-[#C9A84C]' : 'bg-gray-100'}`} title="You matched crowd" />
+                  <div className={`w-5 h-5 rounded-full shadow-sm ${aiWasRight ? 'bg-[#7C6BDB]' : 'bg-gray-100'}`} title="AI predicted winner" />
+                  <div className={`w-5 h-5 rounded-full shadow-sm ${userAndAiAgreed ? 'bg-[#1C1C28]' : 'bg-gray-100'}`} title="You and AI agreed" />
+                </div>
+              </div>
+            )
+          })}
         </div>
       </section>
 
-      {/* Share Card */}
       <section className="max-w-3xl mx-auto px-6 mt-32">
         <div className="bg-[#1C1C28] rounded-[40px] p-12 md:p-16 text-center text-white space-y-10 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
@@ -1047,7 +905,6 @@ ORDER BY vp.first_vote DESC;
         </div>
       </section>
 
-      {/* Restart */}
       <div className="max-w-3xl mx-auto px-6 mt-16 text-center">
         <button
           onClick={onReset}
