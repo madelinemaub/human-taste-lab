@@ -273,6 +273,7 @@ function LogoSection({ size = "w-12 h-12" }) {
 
 export default function Page() {
   const [visitorId, setVisitorId] = useState(null)
+  const [deviceId, setDeviceId] = useState(null)
   const [currentRoundIdx, setCurrentRoundIdx] = useState(0)
   const [selectedId, setSelectedId] = useState(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -282,8 +283,18 @@ export default function Page() {
   const [voteCounts, setVoteCounts] = useState({})
   const [sessionComplete, setSessionComplete] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [voteError, setVoteError] = useState(false)
 
   useEffect(() => {
+    // device_id: permanent, never changes, identifies the physical device
+    let dId = localStorage.getItem('htl_device_id')
+    if (!dId) {
+      dId = crypto.randomUUID()
+      localStorage.setItem('htl_device_id', dId)
+    }
+    setDeviceId(dId)
+
+    // visitor_id: session-based, changes on restart, groups one playthrough
     let id = localStorage.getItem('htl_visitor_id')
     if (!id) {
       id = crypto.randomUUID()
@@ -295,9 +306,14 @@ export default function Page() {
   useEffect(() => {
     if (!visitorId) return
     async function loadData() {
-      const { data: allVotes } = await supabase
+      const { data: allVotes, error } = await supabase
         .from('votes')
         .select('round_id, photo_id, visitor_id')
+
+      if (error) {
+        console.error('Supabase connection error:', error.message)
+      }
+      console.log(`HTL: Loaded ${allVotes?.length || 0} votes from Supabase`)
       const counts = {}
       allVotes?.forEach(vote => {
         if (!counts[vote.round_id]) counts[vote.round_id] = { a: 0, b: 0, c: 0, d: 0 }
@@ -404,21 +420,27 @@ export default function Page() {
     setSelections(prev => ({ ...prev, [currentRound.id]: selectedId }))
     setIsProcessing(true)
     setProcessingStep(0)
+    setVoteError(false)
     try {
       const position = displayPhotos.findIndex(p => p.id === selectedId)
       const { error } = await supabase.from('votes').insert({
         visitor_id: visitorId,
+        device_id: deviceId,
         round_id: currentRound.id,
         photo_id: selectedId,
         display_position: position
       })
-      if (error && error.code !== '23505') {
-        console.error('Vote error:', error)
+      if (error) {
+        console.error('Vote error:', error.code, error.message)
+        if (error.code !== '23505') {
+          setVoteError(true)
+        }
       }
     } catch (err) {
       console.error('Vote error:', err)
+      setVoteError(true)
     }
-  }, [selectedId, revealed, isProcessing, visitorId, currentRound, displayPhotos])
+  }, [selectedId, revealed, isProcessing, visitorId, deviceId, currentRound, displayPhotos])
 
   const stats = useMemo(() => {
     let crowdMatches = 0
@@ -462,6 +484,9 @@ export default function Page() {
         typeKey={typeKey}
         visitorId={visitorId}
         onReset={() => {
+          const newId = crypto.randomUUID()
+          localStorage.setItem('htl_visitor_id', newId)
+          setVisitorId(newId)
           setSelections({})
           setSelectedId(null)
           setRevealed(false)
@@ -620,6 +645,11 @@ export default function Page() {
             </div>
           ) : (
             <div className="w-full">
+              {voteError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 text-center">
+                  <p className="text-red-600 text-sm font-medium">Your vote may not have saved. Check your connection and try refreshing.</p>
+                </div>
+              )}
               <div className="bg-white border border-gray-200 rounded-[32px] p-8 md:p-14 text-left shadow-sm mb-12 relative overflow-hidden">
                 <div className="w-full space-y-10">
                   <div className="space-y-6">
