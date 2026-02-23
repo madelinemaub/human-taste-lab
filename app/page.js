@@ -423,12 +423,16 @@ export default function Page() {
     setVoteError(false)
     try {
       const position = displayPhotos.findIndex(p => p.id === selectedId)
+      const sessionNum = parseInt(localStorage.getItem('htl_session_number') || '1', 10)
+      const snapshot = voteCounts[currentRound.id] || { a: 0, b: 0, c: 0, d: 0 }
       const { error } = await supabase.from('votes').insert({
         visitor_id: visitorId,
         device_id: deviceId,
         round_id: currentRound.id,
         photo_id: selectedId,
-        display_position: position
+        display_position: position,
+        session_number: sessionNum,
+        crowd_snapshot: snapshot
       })
       if (error) {
         console.error('Vote error:', error.code, error.message)
@@ -440,7 +444,7 @@ export default function Page() {
       console.error('Vote error:', err)
       setVoteError(true)
     }
-  }, [selectedId, revealed, isProcessing, visitorId, deviceId, currentRound, displayPhotos])
+  }, [selectedId, revealed, isProcessing, visitorId, deviceId, currentRound, displayPhotos, voteCounts])
 
   const stats = useMemo(() => {
     let crowdMatches = 0
@@ -486,6 +490,8 @@ export default function Page() {
         onReset={() => {
           const newId = crypto.randomUUID()
           localStorage.setItem('htl_visitor_id', newId)
+          const currentSession = parseInt(localStorage.getItem('htl_session_number') || '1', 10)
+          localStorage.setItem('htl_session_number', String(currentSession + 1))
           setVisitorId(newId)
           setSelections({})
           setSelectedId(null)
