@@ -674,7 +674,7 @@ export default function Page() {
                     <Info className="w-7 h-7 text-gray-200" />
                   </div>
                   <p className="text-[11px] md:text-[12px] font-black text-gray-400 uppercase tracking-[0.2em] leading-loose max-w-sm text-center">
-                    Select a photo above to reveal
+                    Select a photo above to reveal{' '}
                     <br className="hidden md:block" />
                     the crowd data and AI results.
                   </p>
