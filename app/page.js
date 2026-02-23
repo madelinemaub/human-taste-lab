@@ -562,7 +562,7 @@ export default function Page() {
             </div>
           </div>
           <p className="text-gray-500 text-sm md:text-[15px] leading-relaxed max-w-xl font-medium">
-            Which photo is the best? Pick your favorite. See what
+            Which photo is the best? Pick your favorite. See what{' '}
             <br className="hidden md:block" />
             everyone else picked. See if AI predicted the winner.
           </p>
@@ -676,7 +676,7 @@ export default function Page() {
                   <p className="text-[11px] md:text-[12px] font-black text-gray-400 uppercase tracking-[0.2em] leading-loose max-w-sm text-center">
                     Select a photo above to reveal{' '}
                     <br className="hidden md:block" />
-                    the crowd data and AI results.
+                    the crowd favorite and AI&apos;s pick.
                   </p>
                 </div>
               )}
