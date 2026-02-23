@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { Check, Info, RotateCcw, Users, ChevronRight, Share2 } from 'lucide-react'
 
@@ -296,6 +296,7 @@ export default function Page() {
   const [loading, setLoading] = useState(true)
   const [voteError, setVoteError] = useState(false)
   const [visitorMeta, setVisitorMeta] = useState({})
+  const roundStartTime = useRef(Date.now())
 
   useEffect(() => {
     // device_id: permanent, never changes, identifies the physical device
@@ -458,6 +459,7 @@ export default function Page() {
       const sessionNum = parseInt(localStorage.getItem('htl_session_number') || '1', 10)
       const snapshot = voteCounts[currentRound.id] || { a: 0, b: 0, c: 0, d: 0 }
       const shuffleOrder = displayPhotos.map(p => p.id)
+      const decisionTimeMs = Date.now() - roundStartTime.current
       const { error } = await supabase.from('votes').insert({
         visitor_id: visitorId,
         device_id: deviceId,
@@ -467,6 +469,7 @@ export default function Page() {
         session_number: sessionNum,
         crowd_snapshot: snapshot,
         shuffle_order: shuffleOrder,
+        decision_time_ms: decisionTimeMs,
         device_type: visitorMeta.device_type || null,
         user_agent: visitorMeta.user_agent || null,
         timezone: visitorMeta.timezone || null,
@@ -537,6 +540,7 @@ export default function Page() {
           setRevealed(false)
           setSessionComplete(false)
           setCurrentRoundIdx(0)
+          roundStartTime.current = Date.now()
         }}
       />
     )
@@ -739,6 +743,7 @@ export default function Page() {
                           setCurrentRoundIdx(c => c + 1)
                           setRevealed(false)
                           setSelectedId(null)
+                          roundStartTime.current = Date.now()
                         } else {
                           setSessionComplete(true)
                         }
