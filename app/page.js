@@ -202,6 +202,7 @@ function getAiScorecard(aiAccuracy) {
 
 function getTasteType(crowdMatches, aiMatches) {
   if (aiMatches === 3 && crowdMatches <= 1) return 'machine-eye'
+  if (aiMatches === 2 && crowdMatches <= 1) return 'digital-eye'
   if (crowdMatches >= 2 && aiMatches === 0) return 'human-element'
   if (crowdMatches === 3) return 'perfect-read'
   if (crowdMatches === 2) return 'mainstream-eye'
@@ -239,6 +240,16 @@ function getMachineEyeContent(crowdMatches) {
       ? "Every round, you and AI picked the same photo. Same image, same instinct, independently. You from whatever you feel when you look at a photo, AI from whatever patterns it's learned from millions of images. The crowd? They went somewhere else every single time. Neither of you matched the majority once."
       : "Every round, you and AI picked the same photo. Same image, same instinct, independently. You matched the crowd once, but it was AI you were consistently aligned with. Three for three with the machine.",
     detail: "You're not aligned with the majority. You're aligned with the model. That probably means you're drawn to the same things AI optimizes for: technical clarity, strong composition, high contrast, obvious focal points. These are the \"objectively good\" qualities of an image. The crowd often picks something warmer, messier, more human. You pick what's correct. Whether that makes you more perceptive or less emotional is the question this result doesn't answer."
+  }
+}
+
+function getDigitalEyeContent(crowdMatches) {
+  return {
+    typeName: 'The Digital Eye', headline: 'You and the algorithm are on the same wavelength.', accent: '#7C6BDB', bg: 'from-[#1C1C28] to-[#1E1E38]',
+    description: crowdMatches === 0
+      ? "Two out of three rounds, you picked the same photo as AI. Not because you saw its answers. You couldn't. You just looked at four photos and your eye went to the same place the algorithm's did. The crowd? They went somewhere else. You and AI are seeing something most people aren't."
+      : "Two out of three rounds, you and AI chose the same photo independently. You matched the crowd once, but your real alignment was with the machine. That's not a coincidence over two rounds. That's a pattern.",
+    detail: "You're not quite The Machine Eye (that requires a perfect three-for-three with AI), but you're close. Two out of three means your visual instincts overlap significantly with what the model was trained to detect: strong composition, clarity, technical precision. The one round where you broke from AI might be the most interesting. That's where your human judgment overrode the algorithmic one. What did you see that the model didn't? Or what did you feel that it can't?"
   }
 }
 
@@ -756,6 +767,7 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
 
   const profile = useMemo(() => {
     if (typeKey === 'machine-eye') return getMachineEyeContent(stats.crowdMatches)
+    if (typeKey === 'digital-eye') return getDigitalEyeContent(stats.crowdMatches)
     if (typeKey === 'human-element') return getHumanElementContent(stats.crowdMatches)
     return TASTE_CONTENT[typeKey] || TASTE_CONTENT['outlier']
   }, [typeKey, stats.crowdMatches])
