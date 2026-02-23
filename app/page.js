@@ -827,15 +827,15 @@ function SummaryView({ stats, selections, voteCounts, typeKey, visitorId, onRese
           <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-gray-400">
             ROUND BY ROUND
           </h3>
-          <div className="flex gap-6 md:gap-10">
-            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#C9A84C]" /> CROWD
+          <div className="flex flex-col md:flex-row gap-2 md:gap-8 items-end md:items-center">
+            <div className="flex items-center gap-2 text-[7px] md:text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+              <div className="w-3 h-3 rounded-full bg-[#C9A84C] shrink-0" /> YOU PICKED THE CROWD FAVORITE
             </div>
-            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#7C6BDB]" /> AI
+            <div className="flex items-center gap-2 text-[7px] md:text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+              <div className="w-3 h-3 rounded-full bg-[#7C6BDB] shrink-0" /> AI PICKED THE CROWD FAVORITE
             </div>
-            <div className="flex items-center gap-2 md:gap-3 text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <div className="w-3 h-3 md:w-4 md:h-4 rounded-full bg-[#1C1C28]" /> AGREED
+            <div className="flex items-center gap-2 text-[7px] md:text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+              <div className="w-3 h-3 rounded-full bg-[#1C1C28] shrink-0" /> YOU AND AI PICKED THE SAME
             </div>
           </div>
         </div>
