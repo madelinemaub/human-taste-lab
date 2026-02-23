@@ -284,6 +284,7 @@ export default function Page() {
   const [sessionComplete, setSessionComplete] = useState(false)
   const [loading, setLoading] = useState(true)
   const [voteError, setVoteError] = useState(false)
+  const [visitorMeta, setVisitorMeta] = useState({})
 
   useEffect(() => {
     // device_id: permanent, never changes, identifies the physical device
@@ -301,6 +302,26 @@ export default function Page() {
       localStorage.setItem('htl_visitor_id', id)
     }
     setVisitorId(id)
+
+    // Detect device type and timezone (no external API needed)
+    const ua = navigator.userAgent || ''
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    const meta = { device_type: isMobile ? 'mobile' : 'desktop', user_agent: ua.slice(0, 500), timezone: tz, country: null, region: null }
+
+    // Try free geo API for country/region (fails silently if blocked)
+    fetch('https://ipapi.co/json/')
+      .then(r => r.json())
+      .then(data => {
+        meta.country = data.country_name || data.country || null
+        meta.region = data.region || null
+        setVisitorMeta({ ...meta })
+      })
+      .catch(() => {
+        setVisitorMeta({ ...meta })
+      })
+
+    setVisitorMeta(meta)
   }, [])
 
   useEffect(() => {
@@ -432,7 +453,12 @@ export default function Page() {
         photo_id: selectedId,
         display_position: position,
         session_number: sessionNum,
-        crowd_snapshot: snapshot
+        crowd_snapshot: snapshot,
+        device_type: visitorMeta.device_type || null,
+        user_agent: visitorMeta.user_agent || null,
+        timezone: visitorMeta.timezone || null,
+        country: visitorMeta.country || null,
+        region: visitorMeta.region || null
       })
       if (error) {
         console.error('Vote error:', error.code, error.message)
@@ -444,7 +470,7 @@ export default function Page() {
       console.error('Vote error:', err)
       setVoteError(true)
     }
-  }, [selectedId, revealed, isProcessing, visitorId, deviceId, currentRound, displayPhotos, voteCounts])
+  }, [selectedId, revealed, isProcessing, visitorId, deviceId, currentRound, displayPhotos, voteCounts, visitorMeta])
 
   const stats = useMemo(() => {
     let crowdMatches = 0
