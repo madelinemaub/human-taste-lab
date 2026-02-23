@@ -446,6 +446,7 @@ export default function Page() {
       const position = displayPhotos.findIndex(p => p.id === selectedId)
       const sessionNum = parseInt(localStorage.getItem('htl_session_number') || '1', 10)
       const snapshot = voteCounts[currentRound.id] || { a: 0, b: 0, c: 0, d: 0 }
+      const shuffleOrder = displayPhotos.map(p => p.id)
       const { error } = await supabase.from('votes').insert({
         visitor_id: visitorId,
         device_id: deviceId,
@@ -454,6 +455,7 @@ export default function Page() {
         display_position: position,
         session_number: sessionNum,
         crowd_snapshot: snapshot,
+        shuffle_order: shuffleOrder,
         device_type: visitorMeta.device_type || null,
         user_agent: visitorMeta.user_agent || null,
         timezone: visitorMeta.timezone || null,
