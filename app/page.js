@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Check, Info, RotateCcw, Users, ChevronRight, Share2 } from 'lucide-react'
+import { Check, Info, RotateCcw, Users, ChevronRight, Share2, Maximize2, X, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react'
 
 // ————————————————————————————————————————————————————————
 // ROUND DATA (matches what's in your Supabase rounds table)
@@ -297,6 +297,9 @@ export default function Page() {
   const [voteError, setVoteError] = useState(false)
   const [visitorMeta, setVisitorMeta] = useState({})
   const roundStartTime = useRef(Date.now())
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false)
+  const [galleryIdx, setGalleryIdx] = useState(0)
+  const touchX = useRef(null)
 
   useEffect(() => {
     // device_id: permanent, never changes, identifies the physical device
@@ -448,6 +451,28 @@ export default function Page() {
     })
   }, [revealed, currentRound, selections, roundVotes, crowdFavoriteId, tiedLeaders, isTied, displayPhotos])
 
+  const handleGallerySelect = useCallback((id) => {
+    setSelectedId(id)
+    setIsGalleryOpen(false)
+  }, [])
+
+  const openGalleryAt = useCallback((idx) => {
+    if (revealed) return
+    setGalleryIdx(idx)
+    setIsGalleryOpen(true)
+  }, [revealed])
+
+  const onTouchStart = useCallback((e) => { touchX.current = e.touches[0].clientX }, [])
+  const onTouchEnd = useCallback((e) => {
+    if (!touchX.current) return
+    const diff = touchX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) > 50) {
+      if (diff > 0 && galleryIdx < 3) setGalleryIdx(prev => prev + 1)
+      else if (diff < 0 && galleryIdx > 0) setGalleryIdx(prev => prev - 1)
+    }
+    touchX.current = null
+  }, [galleryIdx])
+
   const handleConfirm = useCallback(async () => {
     if (!selectedId || revealed || isProcessing || !visitorId) return
     setSelections(prev => ({ ...prev, [currentRound.id]: selectedId }))
@@ -581,8 +606,8 @@ export default function Page() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 md:px-8 pb-32">
-        <div className="grid grid-cols-4 gap-2 md:gap-6 mb-8 mt-12 md:mt-24">
-          {displayPhotos.map((photo) => {
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-8 mt-8 md:mt-24">
+          {displayPhotos.map((photo, idx) => {
             const isTapped = selectedId === photo.id
             const isConfirmed = selections[currentRound.id] === photo.id
             const isAiPick = currentRound.ai_pick === photo.id
@@ -593,10 +618,10 @@ export default function Page() {
               <div key={photo.id} className="relative flex flex-col group transition-all duration-500">
                 <button
                   disabled={revealed || isProcessing}
-                  onClick={() => setSelectedId(photo.id)}
+                  onClick={() => openGalleryAt(idx)}
                   className={`relative w-full aspect-[4/5] rounded-[12px] md:rounded-[24px] overflow-hidden transition-all duration-300
                     ${revealed ? 'cursor-default' : 'md:hover:-translate-y-1 md:hover:shadow-lg active:scale-95 shadow-sm'}
-                    ${isTapped && !revealed ? 'ring-4 ring-black ring-offset-2' : ''}
+                    ${isTapped && !revealed ? 'ring-4 ring-[#2B7FFF] ring-offset-2' : ''}
                     ${isWinner && revealed ? 'ring-4 ring-[#FFD600] ring-offset-2' : ''}
                   `}
                 >
@@ -608,6 +633,11 @@ export default function Page() {
                     `}
                     alt=""
                   />
+                  {!revealed && (
+                    <div className="absolute bottom-3 right-3 bg-black/40 backdrop-blur-md p-1.5 rounded-full text-white">
+                      <Maximize2 className="w-4 h-4" />
+                    </div>
+                  )}
                   {revealed && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-2">
                       <div className="absolute top-1 right-1 md:top-4 md:right-4 flex flex-col gap-1 items-end">
@@ -635,7 +665,7 @@ export default function Page() {
                 </button>
                 <div className="mt-4 md:mt-6 flex justify-between items-center px-1">
                   <span className={`text-[10px] md:text-[12px] font-black uppercase tracking-[0.1em] transition-colors
-                    ${isTapped && !revealed ? 'text-black' : 'text-gray-400'}
+                    ${isTapped && !revealed ? 'text-[#2B7FFF] font-black' : 'text-gray-400'}
                   `}>
                     PHOTO {photo.displayLetter}
                   </span>
@@ -760,6 +790,42 @@ export default function Page() {
           )}
         </div>
       </main>
+
+      {/* Full-screen Gallery Modal */}
+      {isGalleryOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 animate-in fade-in duration-300 overflow-hidden">
+          <header className="flex items-center justify-between px-6 py-6 text-white">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black opacity-40 uppercase tracking-[0.3em]">Viewing Photo</span>
+              <h4 className="text-lg font-black">{displayPhotos[galleryIdx]?.displayLetter} • {galleryIdx + 1} of 4</h4>
+            </div>
+            <button onClick={() => setIsGalleryOpen(false)} className="bg-white/10 p-2 rounded-full backdrop-blur-md">
+              <X className="w-6 h-6" />
+            </button>
+          </header>
+
+          <div className="flex-1 relative flex items-center justify-center touch-none" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+            <button onClick={() => setGalleryIdx(prev => Math.max(0, prev - 1))} className={`absolute left-4 p-3 rounded-full bg-white/5 backdrop-blur-sm text-white transition-opacity z-10 ${galleryIdx === 0 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button onClick={() => setGalleryIdx(prev => Math.min(3, prev + 1))} className={`absolute right-4 p-3 rounded-full bg-white/5 backdrop-blur-sm text-white transition-opacity z-10 ${galleryIdx === 3 ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+              <ChevronRightIcon className="w-6 h-6" />
+            </button>
+            <img src={displayPhotos[galleryIdx]?.src} className="w-full max-h-[70vh] object-contain transition-transform duration-300 ease-out pointer-events-none" alt="" />
+          </div>
+
+          <footer className="p-8 pb-12 flex flex-col gap-6">
+            <button
+              onClick={() => handleGallerySelect(displayPhotos[galleryIdx]?.id)}
+              className="w-full py-5 rounded-3xl backdrop-blur-xl bg-white/10 border border-white/20 text-white font-black uppercase tracking-[0.2em] text-[13px] shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-3"
+            >
+              <Check className="w-5 h-5 text-blue-400" />
+              Select Photo {displayPhotos[galleryIdx]?.displayLetter}
+            </button>
+            <p className="text-center text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Swipe or use arrows to browse</p>
+          </footer>
+        </div>
+      )}
     </div>
   )
 }
