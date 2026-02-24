@@ -319,7 +319,7 @@ export default function Page() {
     const ua = navigator.userAgent || ''
     const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-    const meta = { device_type: isMobile ? 'mobile' : 'desktop', user_agent: ua.slice(0, 500), timezone: tz, country: null, region: null }
+    const meta = { device_type: isMobile ? 'mobile' : 'desktop', user_agent: ua.slice(0, 500), timezone: tz, country: null, region: null, referrer: document.referrer || null }
 
     // Try free geo API for country/region (fails silently if blocked)
     fetch('https://ipapi.co/json/')
@@ -474,7 +474,8 @@ export default function Page() {
         user_agent: visitorMeta.user_agent || null,
         timezone: visitorMeta.timezone || null,
         country: visitorMeta.country || null,
-        region: visitorMeta.region || null
+        region: visitorMeta.region || null,
+        referrer: visitorMeta.referrer || null
       })
       if (error) {
         console.error('Vote error:', error.code, error.message)
