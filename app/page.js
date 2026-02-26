@@ -345,7 +345,7 @@ export default function Page() {
       const { data: allVotes, error } = await supabase
         .from('votes')
         .select('round_id, photo_id, visitor_id')
-        .limit(10000)
+        .limit(100000)
 
       if (error) {
         console.error('Supabase connection error:', error.message)
